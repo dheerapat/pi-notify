@@ -49,35 +49,35 @@ Then `/reload`.
 ## Install
 
 ```bash
-pi install git:github.com/dheeto/pi-notify
+pi install git:github.com/dheerapat/pi-notify
 ```
 
 Or clone and load locally:
 
 ```bash
-git clone https://github.com/dheeto/pi-notify ~/.pi/agent/extensions/pi-notify
+git clone https://github.com/dheerapat/pi-notify ~/.pi/agent/extensions/pi-notify
 ```
 
 Then `/reload` in pi.
 
 ## Triggers
 
-| Trigger | Fires when |
-|---------|-----------|
-| `agent_end` | Agent finishes a full turn, idle and waiting |
-| `agent_start` | Agent begins processing (no messages yet) |
-| `turn_end` | Each individual LLM→tools cycle |
+| Trigger       | Fires when                                   |
+| ------------- | -------------------------------------------- |
+| `agent_end`   | Agent finishes a full turn, idle and waiting |
+| `agent_start` | Agent begins processing (no messages yet)    |
+| `turn_end`    | Each individual LLM→tools cycle              |
 
 ## Include options
 
-| Option | Shows |
-|--------|-------|
-| `prompt` | First user message (truncated to 512 chars) |
-| `message_counts` | "User: 1 · Assistant: 3 · Tools: 5" |
-| `model` | e.g. `anthropic/claude-sonnet-4-5` |
-| `session` | Session name or file path |
-| `tools_detail` | `` `read` ×3, `bash` ×2 `` breakdown |
-| `token_usage` | "in: 12.4K · out: 3.2K · cache: 8.1K" |
+| Option           | Shows                                       |
+| ---------------- | ------------------------------------------- |
+| `prompt`         | First user message (truncated to 512 chars) |
+| `message_counts` | "User: 1 · Assistant: 3 · Tools: 5"         |
+| `model`          | e.g. `anthropic/claude-sonnet-4-5`          |
+| `session`        | Session name or file path                   |
+| `tools_detail`   | `` `read` ×3, `bash` ×2 `` breakdown        |
+| `token_usage`    | "in: 12.4K · out: 3.2K · cache: 8.1K"       |
 
 ## Adding a platform
 
