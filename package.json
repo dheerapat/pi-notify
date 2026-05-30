@@ -1,0 +1,17 @@
+{
+  "name": "pi-notify",
+  "version": "0.1.0",
+  "description": "Multi-platform turn notifications for pi — get Discord (and soon Slack/Telegram) pings when the agent finishes a chat turn.",
+  "keywords": ["pi-package", "pi", "discord", "webhook", "notifications"],
+  "author": "dheeto",
+  "license": "MIT",
+  "pi": {
+    "extensions": ["./extension/notify/index.ts"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "@earendil-works/pi-ai": "*",
+    "typebox": "*"
+  }
+}
