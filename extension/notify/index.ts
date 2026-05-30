@@ -2,7 +2,7 @@
  * pi-notify — Multi‑platform turn notifications for pi
  *
  * Sends webhook notifications when the agent starts/ends chat turns.
- * Configure via ~/.config/pi-notify/config.json or environment variables.
+ * Configure via ~/.pi/agent/notify.json or environment variables.
  *
  * Supported platforms: Discord (webhook)
  * Future: Slack, Telegram, ntfy, Pushover, etc.
@@ -13,7 +13,7 @@
  *
  *   Or:
  *   1. /pi-notify-init  → creates default config file
- *   2. Edit ~/.config/pi-notify/config.json
+ *   2. Edit ~/.pi/agent/notify.json
  *   3. /reload in pi
  */
 

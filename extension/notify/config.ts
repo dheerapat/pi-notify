@@ -1,7 +1,7 @@
 /**
  * Config types and loader for pi-notify.
  *
- * Config file: ~/.config/pi-notify/config.json
+ * Config file: ~/.pi/agent/notify.json
  * Env vars override platform webhook URLs (e.g. DISCORD_WEBHOOK_URL).
  */
 
@@ -74,8 +74,8 @@ export const DEFAULT_CONFIG: NotifyConfig = {
   },
 };
 
-export const CONFIG_DIR = join(homedir(), ".config", "pi-notify");
-export const CONFIG_PATH = join(CONFIG_DIR, "config.json");
+export const CONFIG_DIR = join(homedir(), ".pi", "agent");
+export const CONFIG_PATH = join(CONFIG_DIR, "notify.json");
 
 // ---------------------------------------------------------------------------
 // Loader

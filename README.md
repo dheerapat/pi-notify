@@ -18,7 +18,7 @@ pi
 
 ### Via config file
 
-Run `/pi-notify-init` inside pi, then edit `~/.config/pi-notify/config.json`:
+Run `/pi-notify-init` inside pi, then edit `~/.pi/agent/notify.json`:
 
 ```json
 {
