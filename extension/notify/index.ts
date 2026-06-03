@@ -18,10 +18,9 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { homedir } from "node:os";
-import { join } from "node:path";
-import { loadConfig, applyEnvOverrides, initConfigFile, CONFIG_PATH } from "./config";
-import type { IncludeConfig } from "./config";
+import { existsSync } from "node:fs";
+import { loadConfig, applyEnvOverrides, initConfigFile, writeConfig, DEFAULT_CONFIG, CONFIG_PATH } from "./config";
+import type { IncludeConfig, NotifyConfig } from "./config";
 import { isDiscordConfigured, sendDiscord, DISCORD_BLURPLE } from "./platforms/discord";
 import type { DiscordEmbedField, DiscordEmbed } from "./platforms/discord";
 
@@ -184,6 +183,84 @@ async function notifyDiscord(webhookUrl: string, embed: DiscordEmbed): Promise<v
 }
 
 // ---------------------------------------------------------------------------
+// Interactive setup wizard (shared by /notify-init and /pi-notify-init)
+// ---------------------------------------------------------------------------
+
+async function runInitWizard(ctx: {
+  ui: {
+    select: (title: string, options: string[]) => Promise<string | undefined>;
+    input: (prompt: string, placeholder?: string) => Promise<string | undefined>;
+    confirm: (title: string, message: string) => Promise<boolean>;
+    notify: (message: string, level: "info" | "warning" | "error" | "success") => void;
+  };
+}): Promise<void> {
+  // a. If config already exists, ask before overwriting
+  if (existsSync(CONFIG_PATH)) {
+    const ok = await ctx.ui.confirm(
+      "Config exists",
+      `Config already exists at ${CONFIG_PATH}. Overwrite with a fresh setup?`
+    );
+    if (!ok) {
+      ctx.ui.notify("Config left unchanged", "warning");
+      return;
+    }
+  }
+
+  // b. Platform selection
+  const platformChoices = [
+    { label: "Discord (webhook)", value: "discord" },
+    // Future: { label: "Slack (webhook)", value: "slack" },
+    // Future: { label: "Telegram (bot token)", value: "telegram" },
+  ] as const;
+
+  const selectedLabel = await ctx.ui.select(
+    "Which platform do you want to configure?",
+    platformChoices.map((p) => p.label)
+  );
+
+  if (!selectedLabel) {
+    ctx.ui.notify("Setup cancelled", "info");
+    return;
+  }
+
+  const selected = platformChoices.find((p) => p.label === selectedLabel)!;
+
+  // c. Webhook URL input
+  const placeholder =
+    selected.value === "discord"
+      ? "https://discord.com/api/webhooks/..."
+      : "https://hooks.example.com/webhook/...";
+
+  const webhookUrl = await ctx.ui.input(
+    `Enter your ${selected.value} webhook URL:`,
+    placeholder
+  );
+
+  if (!webhookUrl) {
+    ctx.ui.notify("Setup cancelled", "info");
+    return;
+  }
+
+  // d. Build and save config
+  const config = {
+    platforms: {
+      [selected.value]: {
+        webhook_url: webhookUrl,
+        enabled: true,
+      },
+    },
+    triggers: { ...DEFAULT_CONFIG.triggers },
+    include: { ...DEFAULT_CONFIG.include },
+  } as NotifyConfig;
+
+  writeConfig(config);
+  ctx.ui.notify(
+    `\u2705 Config saved to ${CONFIG_PATH} \u2014 run /reload to activate`,
+    "info"
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Extension
 // ---------------------------------------------------------------------------
 
@@ -203,22 +280,15 @@ export default function (pi: ExtensionAPI) {
     const initMsg = fromFile
       ? `No enabled platforms in ${CONFIG_PATH}. ` +
         "Set a platform's `enabled: true` and provide a webhook URL."
-      : "No platforms configured. Set DISCORD_WEBHOOK_URL or run /pi-notify-init to create a config file.";
+      : "No platforms configured. Set DISCORD_WEBHOOK_URL or run /notify to create a config file.";
 
     console.warn(`[pi-notify] ${initMsg}`);
   }
 
-  // 4. Register the /pi-notify-init command
-  pi.registerCommand("pi-notify-init", {
-    description: "Create or recreate the pi-notify config file",
-    handler: async (_args, ctx) => {
-      const created = initConfigFile();
-      if (created) {
-        ctx.ui.notify(`Created config at ${CONFIG_PATH} — edit it and /reload`, "info");
-      } else {
-        ctx.ui.notify(`Config file already exists at ${CONFIG_PATH}`, "warning");
-      }
-    },
+  // 4. Register interactive setup command
+  pi.registerCommand("notify", {
+    description: "Interactively configure pi-notify — pick a platform and enter webhook URL",
+    handler: async (_args, ctx) => runInitWizard(ctx),
   });
 
   // 5. Shared helpers to build embed contexts from each event shape

@@ -18,7 +18,15 @@ pi
 
 ### Via config file
 
-Run `/pi-notify-init` inside pi, then edit `~/.pi/agent/notify.json`:
+Run `/notify` inside pi — an interactive wizard will let you pick a platform and enter your webhook URL:
+
+```
+/notify
+```
+
+This creates `~/.pi/agent/notify.json` with your settings. You can also edit the file directly — see the schema below. Then run `/reload`.
+
+**Config schema:**
 
 ```json
 {

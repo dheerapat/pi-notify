@@ -150,6 +150,14 @@ export function initConfigFile(): boolean {
 }
 
 /**
+ * Write a full config to disk, overwriting any existing file.
+ */
+export function writeConfig(config: NotifyConfig): void {
+  mkdirSync(CONFIG_DIR, { recursive: true });
+  writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2) + "\n", "utf-8");
+}
+
+/**
  * Get available platforms (those that have configs, enabled or not).
  */
 export function getAvailablePlatforms(): string[] {
