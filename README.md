@@ -8,6 +8,9 @@
 - 🎛 Toggle what goes into the notification (prompt, counts, tools, tokens...)
 - 🔌 Ready for Slack, Telegram, Pushover — add a platform adapter in one file
 
+<img width="680" height="577" alt="screenshot-2026-06-03_17-30-21" src="https://github.com/user-attachments/assets/1ff5a56b-83b0-4219-ae51-3f039c9d608c" />
+
+
 ## Quick start
 
 ### Via env var (zero config)
