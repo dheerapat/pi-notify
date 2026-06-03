@@ -47,6 +47,21 @@ function extractFirstUserPrompt(messages: Array<{ role: string; content?: unknow
   return "";
 }
 
+function extractLastAgentMessage(messages: Array<{ role: string; content?: unknown }>): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg.role !== "assistant") continue;
+    if (Array.isArray(msg.content)) {
+      for (const block of msg.content as Array<{ type: string; text?: string }>) {
+        if (block.type === "text" && block.text) return block.text.trim();
+      }
+    } else if (typeof msg.content === "string" && msg.content.trim()) {
+      return msg.content.trim();
+    }
+  }
+  return "";
+}
+
 interface MessageCounts {
   assistant: number;
   user: number;
@@ -153,7 +168,10 @@ function buildDiscordEmbed(ctx: EmbedContext): DiscordEmbed {
   }
 
   if (ctx.include.session) {
-    fields.push({ name: "Session", value: ctx.sessionName, inline: false });
+    const lastMsg = extractLastAgentMessage(ctx.messages);
+    if (lastMsg) {
+      fields.push({ name: "Last response", value: elide(lastMsg, 256), inline: false });
+    }
   }
 
   const description = ctx.include.prompt && prompt ? elide(prompt) : undefined;
