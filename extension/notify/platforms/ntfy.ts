@@ -23,6 +23,35 @@ export interface NtfyPayload {
 }
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Sanitize a string so it only contains ASCII printable characters
+ * (HTTP header values must be valid ByteString / ASCII).
+ * Non-ASCII characters are replaced with their closest ASCII equivalent.
+ */
+function sanitizeAscii(value: string): string {
+  return value.replace(/[^\x20-\x7E]/g, (c) => {
+    switch (c) {
+      case "\u2013":
+      case "\u2014":
+        return "-"; // en/em dash → hyphen
+      case "\u2018":
+      case "\u2019":
+        return "'"; // smart single quotes → apostrophe
+      case "\u201C":
+      case "\u201D":
+        return '"'; // smart double quotes → quotation mark
+      case "\u2026":
+        return "..."; // ellipsis
+      default:
+        return " ";
+    }
+  }).replace(/\s+/g, " ").trim();
+}
+
+// ---------------------------------------------------------------------------
 // Send
 // ---------------------------------------------------------------------------
 
@@ -30,7 +59,8 @@ export interface NtfyPayload {
  * Send a notification via ntfy.sh.
  *
  * Uses the simple text/plain POST when there's only a message body,
- * or the JSON endpoint for richer payloads (title, tags, priority).
+ * or HTTP headers for richer payloads (title, tags, priority).
+ * Header values are sanitized to ASCII to avoid ByteString errors.
  */
 export async function sendNtfy(
   webhookUrl: string,
@@ -39,7 +69,7 @@ export async function sendNtfy(
   try {
     const headers: Record<string, string> = {};
 
-    // If we only have a message, POST as plain text (simpler)
+    // If we only have a message, POST as plain text (simpler / no headers)
     if (!payload.title && !payload.tags && payload.priority === undefined) {
       const res = await fetch(webhookUrl, {
         method: "POST",
@@ -55,8 +85,8 @@ export async function sendNtfy(
       return true;
     }
 
-    // Richer payload — send as JSON with appropriate headers
-    if (payload.title) headers["Title"] = payload.title;
+    // Richer payload — send as plain text with ASCII-safe headers
+    if (payload.title) headers["Title"] = sanitizeAscii(payload.title);
     if (payload.tags && payload.tags.length > 0) headers["Tags"] = payload.tags.join(",");
     if (payload.priority !== undefined) headers["Priority"] = String(payload.priority);
 
