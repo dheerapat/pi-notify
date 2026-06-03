@@ -18,8 +18,14 @@ export interface DiscordConfig {
   enabled: boolean;
 }
 
+export interface NtfyConfig {
+  webhook_url: string;
+  enabled: boolean;
+}
+
 export interface PlatformConfigs {
   discord?: DiscordConfig;
+  ntfy?: NtfyConfig;
   // future: slack, telegram, etc.
 }
 
@@ -121,6 +127,7 @@ export function loadConfig(): { config: NotifyConfig; fromFile: boolean } {
  * Apply env-var overrides to the config (mutates in place).
  *
  * DISCORD_WEBHOOK_URL → platforms.discord.webhook_url + enabled=true
+ * NTFY_URL           → platforms.ntfy.webhook_url + enabled=true
  */
 export function applyEnvOverrides(config: NotifyConfig): void {
   // Discord
@@ -128,6 +135,15 @@ export function applyEnvOverrides(config: NotifyConfig): void {
   if (discordUrl) {
     config.platforms.discord = {
       webhook_url: discordUrl,
+      enabled: true,
+    };
+  }
+
+  // ntfy.sh
+  const ntfyUrl = process.env["NTFY_URL"];
+  if (ntfyUrl) {
+    config.platforms.ntfy = {
+      webhook_url: ntfyUrl,
       enabled: true,
     };
   }
@@ -162,5 +178,5 @@ export function writeConfig(config: NotifyConfig): void {
  */
 export function getAvailablePlatforms(): string[] {
   // Hard-coded list of supported platform keys
-  return ["discord"];
+  return ["discord", "ntfy"];
 }

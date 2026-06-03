@@ -4,11 +4,15 @@
  * Sends webhook notifications when the agent starts/ends chat turns.
  * Configure via ~/.pi/agent/notify.json or environment variables.
  *
- * Supported platforms: Discord (webhook)
- * Future: Slack, Telegram, ntfy, Pushover, etc.
+ * Supported platforms: Discord (webhook), ntfy.sh
+ * Future: Slack, Telegram, Pushover, etc.
  *
- * Quick start:
+ * Quick start (Discord):
  *   1. export DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/..."
+ *   2. Launch pi
+ *
+ * Quick start (ntfy.sh):
+ *   1. export NTFY_URL="https://ntfy.sh/mytopic"
  *   2. Launch pi
  *
  *   Or:
@@ -23,6 +27,8 @@ import { loadConfig, applyEnvOverrides, initConfigFile, writeConfig, DEFAULT_CON
 import type { IncludeConfig, NotifyConfig } from "./config";
 import { isDiscordConfigured, sendDiscord, DISCORD_BLURPLE } from "./platforms/discord";
 import type { DiscordEmbedField, DiscordEmbed } from "./platforms/discord";
+import { isNtfyConfigured, sendNtfy } from "./platforms/ntfy";
+import type { NtfyPayload } from "./platforms/ntfy";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -201,6 +207,84 @@ async function notifyDiscord(webhookUrl: string, embed: DiscordEmbed): Promise<v
 }
 
 // ---------------------------------------------------------------------------
+// ntfy.sh helpers
+// ---------------------------------------------------------------------------
+
+/** Build an ntfy payload from an embed context (text-based summary). */
+function buildNtfyPayload(ctx: EmbedContext): NtfyPayload {
+  const prompt = extractFirstUserPrompt(ctx.messages as Array<{ role: string; content?: unknown }>);
+  const lines: string[] = [];
+
+  if (ctx.include.prompt && prompt) {
+    lines.push(`Prompt: ${elide(prompt, 200)}`);
+  }
+
+  if (ctx.include.message_counts) {
+    const counts = countMessages(ctx.messages as Array<{ role: string }>);
+    const parts: string[] = [];
+    if (counts.user) parts.push(`user: ${counts.user}`);
+    if (counts.assistant) parts.push(`assistant: ${counts.assistant}`);
+    if (counts.toolResult) parts.push(`tools: ${counts.toolResult}`);
+    if (parts.length) lines.push(`Messages: ${parts.join(" · ")}`);
+  }
+
+  if (ctx.include.model) {
+    lines.push(`Model: ${ctx.modelName}`);
+  }
+
+  if (ctx.include.token_usage) {
+    const usage = extractTokenUsage(ctx.messages as Array<{ usage?: { input?: number; output?: number; cacheRead?: number } }>);
+    if (usage) {
+      const parts: string[] = [];
+      if (usage.input) parts.push(`in: ${usage.input.toLocaleString()}`);
+      if (usage.output) parts.push(`out: ${usage.output.toLocaleString()}`);
+      if (usage.cacheRead) parts.push(`cache: ${usage.cacheRead.toLocaleString()}`);
+      lines.push(`Tokens: ${parts.join(" · ")}`);
+    }
+  }
+
+  if (ctx.include.tools_detail) {
+    const tools = summarizeToolCalls(ctx.messages as Array<{ role: string; toolName?: string }>);
+    if (tools.length > 0) {
+      const top = tools.slice(0, 6);
+      const extra = tools.length > 6 ? ` (+${tools.length - 6} more)` : "";
+      lines.push(`Tools: ${top.map((t) => `${t.name}×${t.count}`).join(", ")}${extra}`);
+    }
+  }
+
+  if (ctx.include.session) {
+    const lastMsg = extractLastAgentMessage(ctx.messages);
+    if (lastMsg) {
+      lines.push(`Last response: ${elide(lastMsg, 200)}`);
+    }
+  }
+
+  return {
+    message: lines.join("\n") || "(no details)",
+    title: ctx.title,
+    tags: ["robot"],
+  };
+}
+
+async function notifyNtfy(webhookUrl: string, payload: NtfyPayload): Promise<void> {
+  await sendNtfy(webhookUrl, payload);
+}
+
+/** Build a minimal ntfy payload (for agent_start). */
+function buildNtfyMinimalPayload(ctx: EmbedContext): NtfyPayload {
+  const lines: string[] = [
+    `Model: ${ctx.modelName}`,
+    `Session: ${ctx.sessionName}`,
+    `cwd: ${ctx.cwd}`,
+  ];
+  return {
+    message: lines.join("\n"),
+    title: ctx.title,
+    tags: ["robot"],
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Interactive setup wizard (shared by /notify-init and /pi-notify-init)
 // ---------------------------------------------------------------------------
 
@@ -227,6 +311,7 @@ async function runInitWizard(ctx: {
   // b. Platform selection
   const platformChoices = [
     { label: "Discord (webhook)", value: "discord" },
+    { label: "ntfy.sh", value: "ntfy" },
     // Future: { label: "Slack (webhook)", value: "slack" },
     // Future: { label: "Telegram (bot token)", value: "telegram" },
   ] as const;
@@ -247,7 +332,9 @@ async function runInitWizard(ctx: {
   const placeholder =
     selected.value === "discord"
       ? "https://discord.com/api/webhooks/..."
-      : "https://hooks.example.com/webhook/...";
+      : selected.value === "ntfy"
+        ? "https://ntfy.sh/mytopic"
+        : "https://hooks.example.com/webhook/...";
 
   const webhookUrl = await ctx.ui.input(
     `Enter your ${selected.value} webhook URL:`,
@@ -292,7 +379,8 @@ export default function (pi: ExtensionAPI) {
 
   // 3. Determine which platforms are active
   const useDiscord = isDiscordConfigured(fileConfig.platforms.discord);
-  const anyPlatform = useDiscord /* || useSlack || ... */;
+  const useNtfy = isNtfyConfigured(fileConfig.platforms.ntfy);
+  const anyPlatform = useDiscord || useNtfy;
 
   if (!anyPlatform) {
     const initMsg = fromFile
@@ -354,36 +442,67 @@ export default function (pi: ExtensionAPI) {
   // 6. Register event handlers based on trigger config
 
   // agent_end — the primary trigger: fires when agent is idle after full turn
-  if (fileConfig.triggers.agent_end && useDiscord) {
-    pi.on("agent_end", async (event, extCtx) => {
-      const embed = buildDiscordEmbed(ctxFromAgentEnd(event, extCtx, "Pi — Turn finished", DISCORD_BLURPLE));
-      await notifyDiscord(fileConfig.platforms.discord!.webhook_url, embed);
-    });
+  if (fileConfig.triggers.agent_end) {
+    if (useDiscord) {
+      pi.on("agent_end", async (event, extCtx) => {
+        const embed = buildDiscordEmbed(ctxFromAgentEnd(event, extCtx, "Pi — Turn finished", DISCORD_BLURPLE));
+        await notifyDiscord(fileConfig.platforms.discord!.webhook_url, embed);
+      });
+    }
+    if (useNtfy) {
+      pi.on("agent_end", async (event, extCtx) => {
+        const ctx = ctxFromAgentEnd(event, extCtx, "Pi — Turn finished", 0);
+        await notifyNtfy(fileConfig.platforms.ntfy!.webhook_url, buildNtfyPayload(ctx));
+      });
+    }
   }
 
   // agent_start — fires when agent begins processing (no messages yet)
-  if (fileConfig.triggers.agent_start && useDiscord) {
-    pi.on("agent_start", async (_event, extCtx) => {
-      const meta = resolveMeta(extCtx);
-      const embed: DiscordEmbed = {
-        title: "Pi — Processing started",
-        color: DISCORD_BLURPLE,
-        fields: [
-          { name: "Model", value: meta.modelName, inline: true },
-          { name: "Session", value: meta.sessionName, inline: true },
-        ],
-        footer: { text: `cwd: ${meta.cwd}` },
-        timestamp: new Date().toISOString(),
-      };
-      await notifyDiscord(fileConfig.platforms.discord!.webhook_url, embed);
-    });
+  if (fileConfig.triggers.agent_start) {
+    if (useDiscord) {
+      pi.on("agent_start", async (_event, extCtx) => {
+        const meta = resolveMeta(extCtx);
+        const embed: DiscordEmbed = {
+          title: "Pi — Processing started",
+          color: DISCORD_BLURPLE,
+          fields: [
+            { name: "Model", value: meta.modelName, inline: true },
+            { name: "Session", value: meta.sessionName, inline: true },
+          ],
+          footer: { text: `cwd: ${meta.cwd}` },
+          timestamp: new Date().toISOString(),
+        };
+        await notifyDiscord(fileConfig.platforms.discord!.webhook_url, embed);
+      });
+    }
+    if (useNtfy) {
+      pi.on("agent_start", async (_event, extCtx) => {
+        const meta = resolveMeta(extCtx);
+        const ctx: EmbedContext = {
+          messages: [],
+          ...meta,
+          include: fileConfig.include,
+          title: "Pi — Processing started",
+          color: 0,
+        };
+        await notifyNtfy(fileConfig.platforms.ntfy!.webhook_url, buildNtfyMinimalPayload(ctx));
+      });
+    }
   }
 
   // turn_end — fires after each individual turn within the agent loop
-  if (fileConfig.triggers.turn_end && useDiscord) {
-    pi.on("turn_end", async (event, extCtx) => {
-      const embed = buildDiscordEmbed(ctxFromTurnEnd(event, extCtx, DISCORD_BLURPLE));
-      await notifyDiscord(fileConfig.platforms.discord!.webhook_url, embed);
-    });
+  if (fileConfig.triggers.turn_end) {
+    if (useDiscord) {
+      pi.on("turn_end", async (event, extCtx) => {
+        const embed = buildDiscordEmbed(ctxFromTurnEnd(event, extCtx, DISCORD_BLURPLE));
+        await notifyDiscord(fileConfig.platforms.discord!.webhook_url, embed);
+      });
+    }
+    if (useNtfy) {
+      pi.on("turn_end", async (event, extCtx) => {
+        const ctx = ctxFromTurnEnd(event, extCtx, 0);
+        await notifyNtfy(fileConfig.platforms.ntfy!.webhook_url, buildNtfyPayload(ctx));
+      });
+    }
   }
 }
