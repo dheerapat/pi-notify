@@ -1,18 +1,26 @@
 # pi-notify
 
-**Multi-platform turn notifications for [pi](https://github.com/earendil-works/pi-mono)** — get pinged on Discord when the agent finishes a chat turn, so you can step away and come back when it's done.
+**Multi-platform turn notifications for [pi](https://github.com/earendil-works/pi-mono)** — get pinged on Discord or [ntfy.sh](https://ntfy.sh) when the agent finishes a chat turn, so you can step away and come back when it's done.
 
 - 🔔 Discord webhook embed with prompt, model, session, tool/token stats
+- 📟 ntfy.sh push notifications (self-hosted or ntfy.sh cloud)
 - 🧩 Configurable triggers: `agent_end`, `agent_start`, `turn_end`
 - 🎛 Toggle what goes into the notification (prompt, counts, tools, tokens...)
-- 🔌 Ready for Slack, Telegram, ntfy, Pushover — add a platform adapter in one file
+- 🔌 Ready for Slack, Telegram, Pushover — add a platform adapter in one file
 
 ## Quick start
 
 ### Via env var (zero config)
 
+**Discord:**
 ```bash
 export DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/..."
+pi
+```
+
+**ntfy.sh:**
+```bash
+export NTFY_URL="https://ntfy.sh/mytopic"
 pi
 ```
 
@@ -34,6 +42,10 @@ This creates `~/.pi/agent/notify.json` with your settings. You can also edit the
     "discord": {
       "webhook_url": "https://discord.com/api/webhooks/...",
       "enabled": true
+    },
+    "ntfy": {
+      "webhook_url": "https://ntfy.sh/mytopic",
+      "enabled": true
     }
   },
   "triggers": {
@@ -52,7 +64,7 @@ This creates `~/.pi/agent/notify.json` with your settings. You can also edit the
 }
 ```
 
-Then `/reload`.
+Then `/reload`. You can enable **multiple platforms at once** — notifications will be sent to every enabled platform.
 
 ## Install
 

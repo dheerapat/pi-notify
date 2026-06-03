@@ -44,27 +44,77 @@ export const DISCORD_ERROR = 0xed4245;   // red
 // Send
 // ---------------------------------------------------------------------------
 
+/** Timeout per attempt (ms). */
+const ATTEMPT_TIMEOUT = 5_000;
+
+/** Backoff delay before retry (ms). */
+const BACKOFF_DELAY = 1_000;
+
+/** Maximum number of attempts. */
+const MAX_ATTEMPTS = 2;
+
+/**
+ * Send a single Discord webhook request and return true on 2xx.
+ * Logs HTTP-level errors but does NOT catch — caller handles retry.
+ */
+async function attemptSendDiscord(
+  webhookUrl: string,
+  payload: DiscordWebhookPayload,
+  attempt: number,
+): Promise<boolean> {
+  const signal = AbortSignal.timeout(ATTEMPT_TIMEOUT);
+
+  const res = await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    signal,
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "(no body)");
+    console.error(`[pi-notify] Discord attempt ${attempt}/${MAX_ATTEMPTS} — ${res.status}: ${text}`);
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Send a Discord webhook notification with retry + backoff.
+ *
+ * - Timeout per attempt: 5s
+ * - Backoff before retry: 1s
+ * - Max attempts: 2
+ */
 export async function sendDiscord(
   webhookUrl: string,
   payload: DiscordWebhookPayload,
 ): Promise<boolean> {
-  try {
-    const res = await fetch(webhookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const ok = await attemptSendDiscord(webhookUrl, payload, attempt);
+      if (ok) return true;
 
-    if (!res.ok) {
-      const text = await res.text().catch(() => "(no body)");
-      console.error(`[pi-notify] Discord webhook ${res.status}: ${text}`);
-      return false;
+      if (attempt === MAX_ATTEMPTS) {
+        console.error(`[pi-notify] Discord webhook failed after ${MAX_ATTEMPTS} attempts`);
+        return false;
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+
+      if (attempt === MAX_ATTEMPTS) {
+        console.error(`[pi-notify] Discord webhook failed after ${MAX_ATTEMPTS} attempts — ${msg}`);
+        return false;
+      }
+
+      console.warn(`[pi-notify] Discord attempt ${attempt}/${MAX_ATTEMPTS} failed — ${msg}, retrying in ${BACKOFF_DELAY}ms…`);
     }
-    return true;
-  } catch (err) {
-    console.error(`[pi-notify] Discord webhook error:`, err);
-    return false;
+
+    await new Promise((r) => setTimeout(r, BACKOFF_DELAY));
   }
+
+  return false;
 }
 
 // ---------------------------------------------------------------------------

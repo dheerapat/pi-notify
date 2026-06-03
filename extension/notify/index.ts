@@ -386,7 +386,7 @@ export default function (pi: ExtensionAPI) {
     const initMsg = fromFile
       ? `No enabled platforms in ${CONFIG_PATH}. ` +
         "Set a platform's `enabled: true` and provide a webhook URL."
-      : "No platforms configured. Set DISCORD_WEBHOOK_URL or run /notify to create a config file.";
+      : "No platforms configured. Set DISCORD_WEBHOOK_URL, NTFY_URL, or run /notify to create a config file.";
 
     console.warn(`[pi-notify] ${initMsg}`);
   }
